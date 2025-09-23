@@ -3,14 +3,11 @@ name: Build Chromium iOS (Unsigned)
 on:
   workflow_dispatch:
     inputs:
-      use_cache:
-        description: 'Use gclient cache'
-        required: true
-        default: 'false'
-        type: choice
-        options:
-          - 'true'
-          - 'false'
+      cache_id:
+        description: 'A unique ID for the gclient cache. If provided, the cache will be used. Leave empty to build without cache.'
+        required: false
+        default: ''
+        type: string
       target:
         description: 'Build target (chrome, content_shell, ios_web_shell)'
         required: true
@@ -33,7 +30,7 @@ on:
 
 jobs:
   build:
-    name: Build Chromium iOS
+    name: "Build Chromium iOS ${{ github.event.inputs.cache_id && format('(Cache: {0})', github.event.inputs.cache_id) }}"
     runs-on: macos-15
     timeout-minutes: 480  # 8 hours timeout for large builds
     
@@ -45,13 +42,13 @@ jobs:
       
     steps:
     - name: Cache gclient cache
-      if: github.event.inputs.use_cache == 'true'
+      if: github.event.inputs.cache_id != ''
       uses: actions/cache@v4
       with:
         path: ${{ env.GCLIENT_CACHE_PATH }}
-        key: ${{ runner.os }}-gclient-cache
+        key: ${{ runner.os }}-${{ github.event.inputs.cache_id }}
         restore-keys: |
-          ${{ runner.os }}-gclient-cache
+          ${{ runner.os }}-${{ github.event.inputs.cache_id }}
 
     - name: Setup Xcode version
       uses: maxim-lobanov/setup-xcode@v1
