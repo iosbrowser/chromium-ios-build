@@ -154,6 +154,8 @@ jobs:
         ios_code_signing_identity=""
         ios_app_bundle_id_prefix="org.chromium"
         EOF
+
+        cd ${{ env.CHROMIUM_PATH }}/src
         
         # Run setup-gn.py to configure build. It will find the .setup-gn file in the parent directory.
         python3 ios/build/tools/setup-gn.py
