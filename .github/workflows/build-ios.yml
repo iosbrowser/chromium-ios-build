@@ -135,6 +135,8 @@ jobs:
         ls -la /Applications/Xcode_16.1.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/
         
         # Create .setup-gn config for unsigned builds
+        cd ${{ env.CHROMIUM_PATH }}
+        
         IOS_VERSION="${{ github.event.inputs.ios_version || '15.0' }}"
         echo "Setting iOS deployment target to: $IOS_VERSION"
         
@@ -142,7 +144,6 @@ jobs:
         [gn_args]
         target_os="ios"
         target_cpu="arm64"
-        target_environment="simulator"
         target_platform="ios"
         ios_enable_code_signing=false
         ios_deployment_target="$IOS_VERSION"
@@ -155,9 +156,6 @@ jobs:
         ios_content_shell_bundle_identifier="org.chromium.content-shell"
         ios_code_signing_identity=""
         ios_app_bundle_id_prefix="org.chromium"
-        # Force iOS SDK usage
-        ios_sdk_path=""
-        mac_sdk_min="14.0"
         EOF
         
         # Run setup-gn.py to configure build
