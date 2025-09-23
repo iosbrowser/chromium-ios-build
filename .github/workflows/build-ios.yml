@@ -141,7 +141,7 @@ jobs:
         [gn_args]
         target_os="ios"
         target_cpu="arm64"
-        target_platform="ios"
+        target_platform="iphoneos"
         ios_enable_code_signing=false
         ios_deployment_target="$IOS_VERSION"
         is_debug=false
