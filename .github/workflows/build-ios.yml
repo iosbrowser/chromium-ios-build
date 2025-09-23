@@ -97,25 +97,7 @@ jobs:
         mkdir -p $HOME/chromium
         cd $HOME/chromium
         export PATH="$HOME/depot_tools:$HOME/depot_tools/python-bin:$PATH"
-        
-        # Create .gclient configuration
-        echo 'solutions = [' > .gclient
-        echo '  {' >> .gclient
-        echo '    "name"        : "src",' >> .gclient
-        echo '    "url"         : "https://chromium.googlesource.com/chromium/src.git",' >> .gclient
-        echo '    "deps_file"   : "DEPS",' >> .gclient
-        echo '    "managed"     : False,' >> .gclient
-        echo '    "custom_deps" : {},' >> .gclient
-        echo '    "custom_vars" : {},' >> .gclient
-        echo '    "safesync_url": "",' >> .gclient
-        echo '  },' >> .gclient
-        echo ']' >> .gclient
-        echo 'target_os = ["ios"]' >> .gclient
-        echo 'target_os_only = True' >> .gclient
-
-        # Fetch Chromium iOS source
-        echo "Starting Chromium iOS source download..."
-        gclient sync --with_branch_heads --with_tags -v --nohooks --no-history
+        fetch --no-history ios
         
     - name: Verify source code
       run: |
