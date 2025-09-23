@@ -22,26 +22,25 @@ on:
         default: '15.0'
         type: choice
         options:
-        - '13.0'
-        - '14.0'
         - '15.0'
         - '16.0'
         - '17.0'
+        - '18.0'
 
 jobs:
   build:
     name: Build Chromium iOS
-    runs-on: macos-13
+    runs-on: macos-14
     timeout-minutes: 480  # 8 hours timeout for large builds
     
     env:
-      DEVELOPER_DIR: /Applications/Xcode_15.0.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_16.0.app/Contents/Developer
       
     steps:
     - name: Setup Xcode version
       uses: maxim-lobanov/setup-xcode@v1
       with:
-        xcode-version: '15.0'
+        xcode-version: '16.0'
         
     - name: Accept Xcode license
       run: |
@@ -55,8 +54,6 @@ jobs:
       run: |
         xcodebuild -version
         xcode-select -p
-        system_profiler SPSoftwareDataType
-        df -h
         
     - name: Install depot_tools
       run: |
@@ -85,82 +82,15 @@ jobs:
         cd $HOME/chromium
         export PATH="$HOME/depot_tools:$HOME/depot_tools/python-bin:$PATH"
         
-        # Show fetch progress information
-        echo "🚀 Starting Chromium iOS source download..."
-        echo "📦 Expected download size: ~15-30GB (without git history)"
-        echo "⏱️  Estimated time: 30min - 6hrs (depending on connection speed)"
-        echo "🔄 Git progress will be shown during download"
-        echo "Started at: $(date)"
+        # Fetch Chromium iOS source
+        echo "Starting Chromium iOS source download..."
+        fetch --no-history ios
         
-        # Fetch Chromium iOS source with progress monitoring
-        echo "Running: fetch --no-history ios"
-        
-        # Start fetch in background and monitor progress
-        fetch --no-history ios &
-        FETCH_PID=$!
-        
-        # Monitor progress while fetch is running
-        echo "📊 Monitoring download progress..."
-        COUNTER=0
-        while kill -0 $FETCH_PID 2>/dev/null; do
-          sleep 60  # Check every minute
-          COUNTER=$((COUNTER + 1))
-          
-          if [ -d "src" ]; then
-            SIZE=$(du -sh src 2>/dev/null | cut -f1)
-            echo "⏳ Progress: ${SIZE} downloaded (${COUNTER} minutes elapsed) - $(date)"
-            
-            # Show some directory sizes to indicate progress
-            if [ -d "src/third_party" ]; then
-              THIRD_PARTY_SIZE=$(du -sh src/third_party 2>/dev/null | cut -f1)
-              echo "   📦 third_party: ${THIRD_PARTY_SIZE}"
-            fi
-            
-            if [ -d "src/chrome" ]; then
-              CHROME_SIZE=$(du -sh src/chrome 2>/dev/null | cut -f1)
-              echo "   🌐 chrome: ${CHROME_SIZE}"
-            fi
-          else
-            echo "⏳ Setting up... (${COUNTER} minutes elapsed) - $(date)"
-          fi
-          
-          # Show disk usage every 10 minutes
-          if [ $((COUNTER % 10)) -eq 0 ]; then
-            echo "💾 Disk usage:"
-            df -h | grep -E "(Filesystem|/dev/disk)"
-          fi
-        done
-        
-        # Wait for fetch to complete and get exit code
-        wait $FETCH_PID
-        FETCH_EXIT_CODE=$?
-        
-        if [ $FETCH_EXIT_CODE -eq 0 ]; then
-          echo "✅ Fetch completed successfully at: $(date)"
-          echo "⏱️  Total time: ${COUNTER} minutes"
-        else
-          echo "❌ Fetch failed with exit code: $FETCH_EXIT_CODE"
-          exit $FETCH_EXIT_CODE
-        fi
-        
-    - name: Check source code size and structure
+    - name: Verify source code
       run: |
         cd $HOME/chromium
-        echo "📊 Analyzing Chromium source code size..."
-        echo "Total Chromium directory size:"
-        du -sh .
-        
-        echo -e "\nSource directory breakdown:"
-        du -sh src
-        
-        echo -e "\nLargest subdirectories in src/:"
-        du -sh src/*/ 2>/dev/null | sort -hr | head -15
-        
-        echo -e "\nLargest third_party components:"
-        du -sh src/third_party/*/ 2>/dev/null | sort -hr | head -10
-        
-        echo -e "\nDisk usage summary:"
-        df -h
+        echo "Verifying Chromium source..."
+        ls -la src/
         
     - name: Check available SDKs and setup build
       run: |
@@ -170,7 +100,7 @@ jobs:
         # Check available iOS SDKs
         echo "🔍 Checking available iOS SDKs..."
         IOS_SDK_PATH="/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs"
-        XCODE_SDK_PATH="/Applications/Xcode_15.0.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs"
+        XCODE_SDK_PATH="/Applications/Xcode_16.0.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs"
         
         echo "Looking for iOS SDKs in:"
         echo "  $IOS_SDK_PATH"
@@ -183,13 +113,13 @@ jobs:
         fi
         
         if [ -d "$XCODE_SDK_PATH" ]; then
-          echo "iOS SDKs in Xcode_15.0:"
-          ls -la "$XCODE_SDK_PATH" | grep -i ios || echo "  No iOS SDKs found in Xcode_15.0"
+          echo "iOS SDKs in Xcode_16.0:"
+          ls -la "$XCODE_SDK_PATH" | grep -i ios || echo "  No iOS SDKs found in Xcode_16.0"
         fi
         
         # Check macOS SDKs for comparison
         echo "Available macOS SDKs:"
-        ls -la /Applications/Xcode_15.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/
+        ls -la /Applications/Xcode_16.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/
         
         # Create .setup-gn config for unsigned builds
         IOS_VERSION="${{ github.event.inputs.ios_version || '15.0' }}"
@@ -206,6 +136,8 @@ jobs:
         symbol_level=1
         enable_dsyms=false
         use_blink=true
+        ios_chromium_bundle_id="org.chromium.chrome.ios.dev"
+        ios_content_shell_bundle_identifier="org.chromium.content-shell"
         ios_code_signing_identity=""
         ios_app_bundle_id_prefix="org.chromium"
         # Force iOS SDK usage
@@ -263,7 +195,7 @@ jobs:
         echo "Build completed successfully!"
         echo "Generated IPA files:"
         ls -la *.ipa
-        echo "File sizes:"
-        du -h *.ipa
-        echo "Disk usage:"
-        df -h
+        
+    - name: Debug with tmate on failure
+      if: failure()
+      uses: mxschmitt/action-tmate@v3
