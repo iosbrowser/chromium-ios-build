@@ -70,6 +70,13 @@ jobs:
     - name: Setup depot_tools environment
       run: |
         export PATH="$HOME/depot_tools:$HOME/depot_tools/python-bin:$PATH"
+        
+        # Configure git for better progress display
+        git config --global progress.status always
+        git config --global core.preloadindex true
+        git config --global transfer.fsckObjects false
+        git config --global fetch.writeCommitGraph true
+        
         gclient --version
         
     - name: Create chromium directory and fetch code
@@ -78,13 +85,66 @@ jobs:
         cd $HOME/chromium
         export PATH="$HOME/depot_tools:$HOME/depot_tools/python-bin:$PATH"
         
-        # Fetch Chromium iOS source (without full history to save time and space)
-        fetch --no-history ios
+        # Show fetch progress information
+        echo "🚀 Starting Chromium iOS source download..."
+        echo "📦 Expected download size: ~15-30GB (without git history)"
+        echo "⏱️  Estimated time: 30min - 6hrs (depending on connection speed)"
+        echo "🔄 Git progress will be shown during download"
+        echo "Started at: $(date)"
         
-    - name: Switch to src directory and setup build
+        # Fetch Chromium iOS source (without full history to save time and space)
+        echo "Running: fetch --no-history --verbose ios"
+        time fetch --no-history --verbose ios
+        
+        echo "Fetch completed at: $(date)"
+        
+    - name: Check source code size and structure
+      run: |
+        cd $HOME/chromium
+        echo "📊 Analyzing Chromium source code size..."
+        echo "Total Chromium directory size:"
+        du -sh .
+        
+        echo -e "\nSource directory breakdown:"
+        du -sh src
+        
+        echo -e "\nLargest subdirectories in src/:"
+        du -sh src/*/ 2>/dev/null | sort -hr | head -15
+        
+        echo -e "\nLargest third_party components:"
+        du -sh src/third_party/*/ 2>/dev/null | sort -hr | head -10
+        
+        echo -e "\nDisk usage summary:"
+        df -h
+        
+    - name: Check available SDKs and setup build
       run: |
         cd $HOME/chromium/src
         export PATH="$HOME/depot_tools:$HOME/depot_tools/python-bin:$PATH"
+        
+        # Check available iOS SDKs
+        echo "🔍 Checking available iOS SDKs..."
+        IOS_SDK_PATH="/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs"
+        XCODE_SDK_PATH="/Applications/Xcode_15.0.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs"
+        
+        echo "Looking for iOS SDKs in:"
+        echo "  $IOS_SDK_PATH"
+        echo "  $XCODE_SDK_PATH"
+        
+        # List available iOS SDKs
+        if [ -d "$IOS_SDK_PATH" ]; then
+          echo "iOS SDKs found:"
+          ls -la "$IOS_SDK_PATH" | grep -i ios || echo "  No iOS SDKs found in default location"
+        fi
+        
+        if [ -d "$XCODE_SDK_PATH" ]; then
+          echo "iOS SDKs in Xcode_15.0:"
+          ls -la "$XCODE_SDK_PATH" | grep -i ios || echo "  No iOS SDKs found in Xcode_15.0"
+        fi
+        
+        # Check macOS SDKs for comparison
+        echo "Available macOS SDKs:"
+        ls -la /Applications/Xcode_15.0.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/
         
         # Create .setup-gn config for unsigned builds
         IOS_VERSION="${{ github.event.inputs.ios_version || '15.0' }}"
@@ -93,6 +153,7 @@ jobs:
         cat > .setup-gn << EOF
         [gn_args]
         target_os="ios"
+        target_platform="ios"
         ios_enable_code_signing=false
         ios_deployment_target="$IOS_VERSION"
         is_debug=false
@@ -102,6 +163,9 @@ jobs:
         use_blink=true
         ios_code_signing_identity=""
         ios_app_bundle_id_prefix="org.chromium"
+        # Force iOS SDK usage
+        ios_sdk_path=""
+        mac_sdk_min="14.0"
         EOF
         
         # Run setup-gn.py to configure build
