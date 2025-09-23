@@ -141,6 +141,7 @@ jobs:
         cat > .setup-gn << EOF
         [gn_args]
         target_os="ios"
+        target_cpu="arm64"
         target_environment="simulator"
         target_platform="ios"
         ios_enable_code_signing=false
