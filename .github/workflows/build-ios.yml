@@ -3,11 +3,6 @@ name: Build Chromium iOS (Unsigned)
 on:
   workflow_dispatch:
     inputs:
-      cache_id:
-        description: 'A unique ID for the gclient cache. If provided, the cache will be used. Leave empty to build without cache.'
-        required: false
-        default: ''
-        type: string
       target:
         description: 'Build target (chrome, content_shell, ios_web_shell)'
         required: true
@@ -27,6 +22,11 @@ on:
         - '16.0'
         - '17.0'
         - '18.0'
+      cache_id:
+        description: 'A unique ID for the gclient cache. If provided, the cache will be used. Leave empty to build without cache.'
+        required: false
+        default: ''
+        type: string
 
 jobs:
   build:
