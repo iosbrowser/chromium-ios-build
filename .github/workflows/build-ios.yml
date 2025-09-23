@@ -30,11 +30,11 @@ on:
 jobs:
   build:
     name: Build Chromium iOS
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 480  # 8 hours timeout for large builds
     
     env:
-      DEVELOPER_DIR: /Applications/Xcode_16.1.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_26.0.app/Contents/Developer
       DEPOT_TOOLS_PATH: /Users/runner/depot_tools
       CHROMIUM_PATH: /Users/runner/chromium
       GCLIENT_CACHE_PATH: /Users/runner/gclient_cache
@@ -43,7 +43,7 @@ jobs:
     - name: Setup Xcode version
       uses: maxim-lobanov/setup-xcode@v1
       with:
-        xcode-version: '16.1'
+        xcode-version: '26.0'
         
     - name: Accept Xcode license
       run: |
