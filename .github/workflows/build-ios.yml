@@ -92,11 +92,56 @@ jobs:
         echo "🔄 Git progress will be shown during download"
         echo "Started at: $(date)"
         
-        # Fetch Chromium iOS source (without full history to save time and space)
+        # Fetch Chromium iOS source with progress monitoring
         echo "Running: fetch --no-history ios"
-        time fetch --no-history ios
         
-        echo "Fetch completed at: $(date)"
+        # Start fetch in background and monitor progress
+        fetch --no-history ios &
+        FETCH_PID=$!
+        
+        # Monitor progress while fetch is running
+        echo "📊 Monitoring download progress..."
+        COUNTER=0
+        while kill -0 $FETCH_PID 2>/dev/null; do
+          sleep 60  # Check every minute
+          COUNTER=$((COUNTER + 1))
+          
+          if [ -d "src" ]; then
+            SIZE=$(du -sh src 2>/dev/null | cut -f1)
+            echo "⏳ Progress: ${SIZE} downloaded (${COUNTER} minutes elapsed) - $(date)"
+            
+            # Show some directory sizes to indicate progress
+            if [ -d "src/third_party" ]; then
+              THIRD_PARTY_SIZE=$(du -sh src/third_party 2>/dev/null | cut -f1)
+              echo "   📦 third_party: ${THIRD_PARTY_SIZE}"
+            fi
+            
+            if [ -d "src/chrome" ]; then
+              CHROME_SIZE=$(du -sh src/chrome 2>/dev/null | cut -f1)
+              echo "   🌐 chrome: ${CHROME_SIZE}"
+            fi
+          else
+            echo "⏳ Setting up... (${COUNTER} minutes elapsed) - $(date)"
+          fi
+          
+          # Show disk usage every 10 minutes
+          if [ $((COUNTER % 10)) -eq 0 ]; then
+            echo "💾 Disk usage:"
+            df -h | grep -E "(Filesystem|/dev/disk)"
+          fi
+        done
+        
+        # Wait for fetch to complete and get exit code
+        wait $FETCH_PID
+        FETCH_EXIT_CODE=$?
+        
+        if [ $FETCH_EXIT_CODE -eq 0 ]; then
+          echo "✅ Fetch completed successfully at: $(date)"
+          echo "⏱️  Total time: ${COUNTER} minutes"
+        else
+          echo "❌ Fetch failed with exit code: $FETCH_EXIT_CODE"
+          exit $FETCH_EXIT_CODE
+        fi
         
     - name: Check source code size and structure
       run: |
