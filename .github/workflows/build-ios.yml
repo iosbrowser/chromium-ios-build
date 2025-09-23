@@ -1,12 +1,16 @@
 name: Build Chromium iOS (Unsigned)
 
 on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
     inputs:
+      use_cache:
+        description: 'Use gclient cache'
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
       target:
         description: 'Build target (chrome, content_shell, ios_web_shell)'
         required: true
@@ -40,6 +44,15 @@ jobs:
       GCLIENT_CACHE_PATH: /Users/runner/gclient_cache
       
     steps:
+    - name: Cache gclient cache
+      if: github.event.inputs.use_cache == 'true'
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.GCLIENT_CACHE_PATH }}
+        key: ${{ runner.os }}-gclient-cache
+        restore-keys: |
+          ${{ runner.os }}-gclient-cache
+
     - name: Setup Xcode version
       uses: maxim-lobanov/setup-xcode@v1
       with:
@@ -85,9 +98,24 @@ jobs:
         cd $HOME/chromium
         export PATH="$HOME/depot_tools:$HOME/depot_tools/python-bin:$PATH"
         
+        # Create .gclient configuration
+        echo 'solutions = [' > .gclient
+        echo '  {' >> .gclient
+        echo '    "name"        : "src",' >> .gclient
+        echo '    "url"         : "https://chromium.googlesource.com/chromium/src.git",' >> .gclient
+        echo '    "deps_file"   : "DEPS",' >> .gclient
+        echo '    "managed"     : False,' >> .gclient
+        echo '    "custom_deps" : {},' >> .gclient
+        echo '    "custom_vars" : {},' >> .gclient
+        echo '    "safesync_url": "",' >> .gclient
+        echo '  },' >> .gclient
+        echo ']' >> .gclient
+        echo 'target_os = ["ios"]' >> .gclient
+        echo 'target_os_only = True' >> .gclient
+
         # Fetch Chromium iOS source
         echo "Starting Chromium iOS source download..."
-        fetch --no-history ios
+        gclient sync --with_branch_heads --with_tags -v --nohooks --no-history
         
     - name: Verify source code
       run: |
