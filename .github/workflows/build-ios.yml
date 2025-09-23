@@ -93,8 +93,8 @@ jobs:
         echo "Started at: $(date)"
         
         # Fetch Chromium iOS source (without full history to save time and space)
-        echo "Running: fetch --no-history --verbose ios"
-        time fetch --no-history --verbose ios
+        echo "Running: fetch --no-history ios"
+        time fetch --no-history ios
         
         echo "Fetch completed at: $(date)"
         
