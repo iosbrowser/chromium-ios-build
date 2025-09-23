@@ -71,8 +71,6 @@ jobs:
       run: |
         export PATH="$HOME/depot_tools:$HOME/depot_tools/python-bin:$PATH"
         gclient --version
-        # Force update depot_tools as mentioned in tutorial
-        gclient status
         
     - name: Create chromium directory and fetch code
       run: |
