@@ -12,16 +12,6 @@ on:
         - chrome
         - content_shell
         - ios_web_shell
-      ios_version:
-        description: 'Minimum iOS version requirement'
-        required: true
-        default: '15.0'
-        type: choice
-        options:
-        - '15.0'
-        - '16.0'
-        - '17.0'
-        - '18.0'
       cache_id:
         description: 'A unique ID for the gclient cache. If provided, the cache will be used. Leave empty to build without cache.'
         required: false
@@ -134,16 +124,12 @@ jobs:
         # Create .setup-gn config for unsigned builds
         cd ${{ env.CHROMIUM_PATH }}
         
-        IOS_VERSION="${{ github.event.inputs.ios_version || '15.0' }}"
-        echo "Setting iOS deployment target to: $IOS_VERSION"
-        
         cat > .setup-gn << EOF
         [gn_args]
         target_os="ios"
         target_cpu="arm64"
         target_platform="iphoneos"
         ios_enable_code_signing=false
-        ios_deployment_target="$IOS_VERSION"
         is_debug=false
         is_component_build=false
         symbol_level=1
