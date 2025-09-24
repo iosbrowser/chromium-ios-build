@@ -19,101 +19,8 @@ on:
         type: string
 
 jobs:
-  prepare_source:
-    name: "Prepare Chromium Source ${{ github.event.inputs.cache_id && format('(Cache: {0})', github.event.inputs.cache_id) }}"
-    runs-on: macos-15
-    timeout-minutes: 120 # 2 hours timeout for fetching source
-
-    env:
-      DEVELOPER_DIR: /Applications/Xcode_26.0.app/Contents/Developer
-      DEPOT_TOOLS_PATH: /Users/runner/depot_tools
-      CHROMIUM_PATH: /Users/runner/chromium
-      GCLIENT_CACHE_PATH: /Users/runner/gclient_cache
-
-    steps:
-    - name: Cache gclient cache
-      if: github.event.inputs.cache_id != ''
-      uses: actions/cache@v4
-      with:
-        path: ${{ env.GCLIENT_CACHE_PATH }}
-        key: ${{ runner.os }}-${{ github.event.inputs.cache_id }}
-        restore-keys: |
-          ${{ runner.os }}-${{ github.event.inputs.cache_id }}
-
-    - name: Setup Xcode version
-      uses: maxim-lobanov/setup-xcode@v1
-      with:
-        xcode-version: '26.0'
-
-    - name: Accept Xcode license
-      run: |
-        sudo xcodebuild -license accept
-
-    - name: Install depot_tools
-      run: |
-        cd $HOME
-        if [ ! -d "depot_tools" ]; then
-          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
-        fi
-        echo "$HOME/depot_tools" >> $GITHUB_PATH
-        echo "$HOME/depot_tools/python-bin" >> $GITHUB_PATH
-
-    - name: Setup depot_tools environment
-      run: |
-        export PATH="$HOME/depot_tools:$HOME/depot_tools/python-bin:$PATH"
-        git config --global progress.status always
-        git config --global core.preloadindex true
-        git config --global transfer.fsckObjects false
-        git config --global fetch.writeCommitGraph true
-        gclient --version
-
-    - name: Create chromium directory and fetch code
-      run: |
-        mkdir -p $HOME/chromium
-        cd $HOME/chromium
-        export PATH="$HOME/depot_tools:$HOME/depot_tools/python-bin:$PATH"
-        fetch --no-history ios
-        
-    - name: Setup gn
-      run: |
-        cd ${{ env.CHROMIUM_PATH }}/src
-        export PATH="$HOME/depot_tools:$HOME/depot_tools/python-bin:$PATH"
-        
-        # Create .setup-gn config for unsigned builds
-        cd ${{ env.CHROMIUM_PATH }}
-        
-        cat > .setup-gn << EOF
-        [gn_args]
-        target_os="ios"
-        target_cpu="arm64"
-        target_platform="iphoneos"
-        ios_enable_code_signing=false
-        is_debug=false
-        is_component_build=false
-        symbol_level=1
-        enable_dsyms=false
-        use_blink=true
-        ios_chromium_bundle_id="org.chromium.chrome.ios.dev"
-        ios_content_shell_bundle_identifier="org.chromium.content-shell"
-        ios_code_signing_identity=""
-        ios_app_bundle_id_prefix="org.chromium"
-        EOF
-
-        cd ${{ env.CHROMIUM_PATH }}/src
-        
-        # Run setup-gn.py to configure build. It will find the .setup-gn file in the parent directory.
-        python3 ios/build/tools/setup-gn.py
-
-    - name: Upload Chromium source artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: chromium-source
-        path: ${{ env.CHROMIUM_PATH }}
-        retention-days: 1
-
   build_modules:
     name: "Build ${{ matrix.module }}"
-    needs: prepare_source
     runs-on: macos-15
     timeout-minutes: 300 # 5 hours timeout for building a module
     strategy:
@@ -132,6 +39,10 @@ jobs:
       with:
         xcode-version: '26.0'
 
+    - name: Accept Xcode license
+      run: |
+        sudo xcodebuild -license accept
+
     - name: Install depot_tools
       run: |
         cd $HOME
@@ -141,19 +52,36 @@ jobs:
         echo "$HOME/depot_tools" >> $GITHUB_PATH
         echo "$HOME/depot_tools/python-bin" >> $GITHUB_PATH
 
-    - name: Download Chromium source artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: chromium-source
-        path: ${{ env.CHROMIUM_PATH }}
-
-    - name: Cache build output
-      uses: actions/cache@v4
-      with:
-        path: ${{ env.CHROMIUM_PATH }}/src/out/
-        key: ${{ runner.os }}-build-output-${{ github.run_id }}-${{ matrix.module }}
-        restore-keys: |
-          ${{ runner.os }}-build-output-${{ github.run_id }}-
+    - name: Fetch Chromium Source
+      run: |
+        mkdir -p $HOME/chromium
+        cd $HOME/chromium
+        export PATH="$HOME/depot_tools:$HOME/depot_tools/python-bin:$PATH"
+        fetch --no-history ios
+    
+    - name: Setup gn
+      run: |
+        cd ${{ env.CHROMIUM_PATH }}/src
+        export PATH="$HOME/depot_tools:$HOME/depot_tools/python-bin:$PATH"
+        cd ${{ env.CHROMIUM_PATH }}
+        cat > .setup-gn << EOF
+        [gn_args]
+        target_os="ios"
+        target_cpu="arm64"
+        target_platform="iphoneos"
+        ios_enable_code_signing=false
+        is_debug=false
+        is_component_build=false
+        symbol_level=1
+        enable_dsyms=false
+        use_blink=true
+        ios_chromium_bundle_id="org.chromium.chrome.ios.dev"
+        ios_content_shell_bundle_identifier="org.chromium.content-shell"
+        ios_code_signing_identity=""
+        ios_app_bundle_id_prefix="org.chromium"
+        EOF
+        cd ${{ env.CHROMIUM_PATH }}/src
+        python3 ios/build/tools/setup-gn.py
 
     - name: Build module
       run: |
@@ -161,9 +89,44 @@ jobs:
         export PATH="$HOME/depot_tools:$HOME/depot_tools/python-bin:$PATH"
         autoninja -C out/Release-iphoneos ${{ matrix.module }}
 
+    - name: Upload partial build output
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-output-${{ matrix.module }}
+        path: ${{ env.CHROMIUM_PATH }}/src/out/
+        retention-days: 1
+
+  combine_and_cache:
+    name: "Combine and Cache Build Outputs"
+    needs: build_modules
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Create directories for artifacts and cache
+        run: |
+          mkdir -p /Users/runner/partial-builds
+          mkdir -p /Users/runner/chromium/src/out
+      - name: Download all partial build outputs
+        uses: actions/download-artifact@v4
+        with:
+          path: /Users/runner/partial-builds
+      - name: Combine build outputs
+        run: |
+          # The downloaded artifacts are in subdirectories named after the artifact
+          for dir in /Users/runner/partial-builds/build-output-*; do
+            if [ -d "$dir" ]; then
+              rsync -av "$dir"/ /Users/runner/chromium/src/out/
+            fi
+          done
+      - name: Cache combined build output
+        uses: actions/cache@vv4
+        with:
+          path: /Users/runner/chromium/src/out/
+          key: combined-build-output-${{ github.run_id }}
+
   build_final_target:
     name: "Build Final Target"
-    needs: build_modules
+    needs: combine_and_cache
     runs-on: macos-15
     timeout-minutes: 180 # 3 hours timeout for final build
 
@@ -187,19 +150,19 @@ jobs:
         echo "$HOME/depot_tools" >> $GITHUB_PATH
         echo "$HOME/depot_tools/python-bin" >> $GITHUB_PATH
 
-    - name: Download Chromium source artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: chromium-source
-        path: ${{ env.CHROMIUM_PATH }}
+    - name: Fetch Chromium Source
+      run: |
+        mkdir -p $HOME/chromium
+        cd $HOME/chromium
+        export PATH="$HOME/depot_tools:$HOME/depot_tools/python-bin:$PATH"
+        fetch --no-history ios
 
-    - name: Restore build output cache
+    - name: Restore combined build output
       uses: actions/cache@v4
       with:
         path: ${{ env.CHROMIUM_PATH }}/src/out/
-        key: ${{ runner.os }}-build-output-${{ github.run_id }}-dummy # This key won't match, forcing restore from restore-keys
-        restore-keys: |
-          ${{ runner.os }}-build-output-${{ github.run_id }}-
+        key: combined-build-output-${{ github.run_id }}
+        fail-on-cache-miss: true
 
     - name: Build final target
       run: |
@@ -207,14 +170,9 @@ jobs:
         export PATH="$HOME/depot_tools:$HOME/depot_tools/python-bin:$PATH"
         TARGET="${{ github.event.inputs.target || 'chrome' }}"
         echo "Building final target: $TARGET"
+        # We need to run gn gen again to ensure build configuration is correct
+        python3 ios/build/tools/setup-gn.py
         autoninja -C out/Release-iphoneos $TARGET
-    
-    - name: Upload build output artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-output
-        path: ${{ env.CHROMIUM_PATH }}/src/out/
-        retention-days: 1
 
   package_ipa:
     name: "Package and Upload IPA"
@@ -226,39 +184,37 @@ jobs:
       CHROMIUM_PATH: /Users/runner/chromium
 
     steps:
-    - name: Download Chromium source artifact
-      uses: actions/download-artifact@v4
+    - name: Fetch Chromium Source
+      run: |
+        mkdir -p $HOME/chromium
+        cd $HOME/chromium
+        export PATH="$HOME/depot_tools:$HOME/depot_tools/python-bin:$PATH"
+        # Only need a shallow copy for packaging
+        git clone --depth 1 https://chromium.googlesource.com/chromium/src.git ${{ env.CHROMIUM_PATH }}/src
+
+    - name: Restore combined build output
+      uses: actions/cache@v4
       with:
-        name: chromium-source
-        path: ${{ env.CHROMIUM_PATH }}
-        
-    - name: Download build output artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: build-output
         path: ${{ env.CHROMIUM_PATH }}/src/out/
+        key: combined-build-output-${{ github.run_id }}
+        fail-on-cache-miss: true
 
     - name: Create unsigned IPA
       run: |
         cd ${{ env.CHROMIUM_PATH }}/src
         TARGET="${{ github.event.inputs.target || 'chrome' }}"
         
-        # Find the built app
         APP_PATH="out/Release-iphoneos/${TARGET}.app"
         if [ ! -d "$APP_PATH" ]; then
           echo "App not found at $APP_PATH"
-          ls -la out/Release-iphoneos/
           exit 1
         fi
         
-        # Create Payload directory and copy app
         mkdir -p Payload
         cp -R "$APP_PATH" Payload/
         
-        # Create IPA (it's just a zip file)
         zip -r "${TARGET}-unsigned-$(date +%Y%m%d-%H%M%S).ipa" Payload
         
-        # Clean up
         rm -rf Payload
 
     - name: Upload IPA artifact
@@ -267,13 +223,6 @@ jobs:
         name: chromium-ios-unsigned-ipa
         path: ${{ env.CHROMIUM_PATH }}/src/*.ipa
         retention-days: 7
-
-    - name: Show build information
-      run: |
-        cd ${{ env.CHROMIUM_PATH }}/src
-        echo "Build completed successfully!"
-        echo "Generated IPA files:"
-        ls -la *.ipa
 
     - name: Debug with tmate on failure
       if: failure()
