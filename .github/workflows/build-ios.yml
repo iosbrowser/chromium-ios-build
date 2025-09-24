@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        module: [ "base", "net", "ui", "content", "blink", "services" ]
+        module: [ "//base", "//net", "//ui", "//services", "//third_party/blink/public:blink_headers", "//content/browser", "//content/renderer", "//content/common" ]
 
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.0.app/Contents/Developer
