@@ -12,6 +12,11 @@ on:
         - chrome
         - content_shell
         - ios_web_shell
+      reuse_artifacts:
+        description: 'Reuse artifacts from previous workflows (within 7 days)'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build_modules:
@@ -29,16 +34,85 @@ jobs:
       CHROMIUM_PATH: /Users/runner/chromium
 
     steps:
+    - name: Check for existing artifacts
+      id: check_artifacts
+      if: ${{ github.event.inputs.reuse_artifacts == 'true' }}
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # Calculate date 7 days ago
+        SEVEN_DAYS_AGO=$(date -d '7 days ago' '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || date -v-7d '+%Y-%m-%dT%H:%M:%SZ')
+        
+        # Search for recent workflow runs
+        echo "Searching for artifacts from workflows in the last 7 days..."
+        
+        # Get recent successful workflow runs
+        WORKFLOWS=$(gh api repos/${{ github.repository }}/actions/runs \
+          --jq ".workflow_runs[] | select(.status == \"completed\" and .conclusion == \"success\" and .created_at >= \"$SEVEN_DAYS_AGO\") | .id" \
+          | head -10)
+        
+        ARTIFACT_NAME="build-output-${{ replace(matrix.module, ':', '_') }}"
+        FOUND_ARTIFACT=""
+        LATEST_DATE=""
+        
+        for run_id in $WORKFLOWS; do
+          echo "Checking workflow run: $run_id"
+          
+          # Check if this run has our artifact
+          ARTIFACT_INFO=$(gh api repos/${{ github.repository }}/actions/runs/$run_id/artifacts \
+            --jq ".artifacts[] | select(.name == \"$ARTIFACT_NAME\") | {id: .id, created_at: .created_at, expired: .expired}")
+          
+          if [ -n "$ARTIFACT_INFO" ] && [ "$(echo "$ARTIFACT_INFO" | jq -r .expired)" = "false" ]; then
+            ARTIFACT_DATE=$(echo "$ARTIFACT_INFO" | jq -r .created_at)
+            ARTIFACT_ID=$(echo "$ARTIFACT_INFO" | jq -r .id)
+            
+            echo "Found artifact: $ARTIFACT_ID created at $ARTIFACT_DATE"
+            
+            # Check if this is the most recent one
+            if [ -z "$LATEST_DATE" ] || [ "$ARTIFACT_DATE" \> "$LATEST_DATE" ]; then
+              LATEST_DATE="$ARTIFACT_DATE"
+              FOUND_ARTIFACT="$ARTIFACT_ID"
+            fi
+          fi
+        done
+        
+        if [ -n "$FOUND_ARTIFACT" ]; then
+          echo "Using most recent artifact: $FOUND_ARTIFACT from $LATEST_DATE"
+          echo "artifact_found=true" >> $GITHUB_OUTPUT
+          echo "artifact_id=$FOUND_ARTIFACT" >> $GITHUB_OUTPUT
+        else
+          echo "No suitable artifact found, will build from scratch"
+          echo "artifact_found=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Download existing artifact
+      if: ${{ steps.check_artifacts.outputs.artifact_found == 'true' }}
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        echo "Downloading artifact: ${{ steps.check_artifacts.outputs.artifact_id }}"
+        gh api repos/${{ github.repository }}/actions/artifacts/${{ steps.check_artifacts.outputs.artifact_id }}/zip \
+          > artifact.zip
+        
+        mkdir -p ${{ env.CHROMIUM_PATH }}/src/out/
+        unzip -o artifact.zip -d ${{ env.CHROMIUM_PATH }}/src/out/
+        rm artifact.zip
+        
+        echo "Artifact downloaded and extracted successfully"
+
     - name: Setup Xcode version
+      if: ${{ steps.check_artifacts.outputs.artifact_found != 'true' }}
       uses: maxim-lobanov/setup-xcode@v1
       with:
         xcode-version: '26.0'
 
     - name: Accept Xcode license
+      if: ${{ steps.check_artifacts.outputs.artifact_found != 'true' }}
       run: |
         sudo xcodebuild -license accept
 
     - name: Install depot_tools
+      if: ${{ steps.check_artifacts.outputs.artifact_found != 'true' }}
       run: |
         cd $HOME
         if [ ! -d "depot_tools" ]; then
@@ -48,6 +122,7 @@ jobs:
         echo "$HOME/depot_tools/python-bin" >> $GITHUB_PATH
 
     - name: Fetch Chromium Source
+      if: ${{ steps.check_artifacts.outputs.artifact_found != 'true' }}
       run: |
         mkdir -p $HOME/chromium
         cd $HOME/chromium
@@ -55,6 +130,7 @@ jobs:
         fetch --no-history ios
     
     - name: Setup gn
+      if: ${{ steps.check_artifacts.outputs.artifact_found != 'true' }}
       run: |
         cd ${{ env.CHROMIUM_PATH }}/src
         export PATH="$HOME/depot_tools:$HOME/depot_tools/python-bin:$PATH"
@@ -79,6 +155,7 @@ jobs:
         python3 ios/build/tools/setup-gn.py
 
     - name: Build module
+      if: ${{ steps.check_artifacts.outputs.artifact_found != 'true' }}
       run: |
         cd ${{ env.CHROMIUM_PATH }}/src
         export PATH="$HOME/depot_tools:$HOME/depot_tools/python-bin:$PATH"
@@ -87,7 +164,7 @@ jobs:
     - name: Upload partial build output
       uses: actions/upload-artifact@v4
       with:
-        name: build-output-${{ matrix.module }}
+        name: build-output-${{ replace(matrix.module, ':', '_') }}
         path: ${{ env.CHROMIUM_PATH }}/src/out/
         retention-days: 1
 
