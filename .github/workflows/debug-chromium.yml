@@ -1,0 +1,55 @@
+name: Debug Chromium iOS Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  debug_setup:
+    name: "Setup and Debug Chromium iOS"
+    runs-on: macos-15
+    timeout-minutes: 360 # 6 hours timeout
+    
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.0.app/Contents/Developer
+      DEPOT_TOOLS_PATH: /Users/runner/depot_tools
+      CHROMIUM_PATH: /Users/runner/chromium
+
+    steps:
+    - name: Setup Xcode version
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: '26.0'
+
+    - name: Accept Xcode license
+      run: |
+        sudo xcodebuild -license accept
+
+    - name: Install depot_tools
+      run: |
+        cd $HOME
+        if [ ! -d "depot_tools" ]; then
+          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
+        fi
+        echo "$HOME/depot_tools" >> $GITHUB_PATH
+        echo "$HOME/depot_tools/python-bin" >> $GITHUB_PATH
+
+    - name: Fetch Chromium Source
+      run: |
+        mkdir -p $HOME/chromium
+        cd $HOME/chromium
+        export PATH="$HOME/depot_tools:$HOME/depot_tools/python-bin:$PATH"
+        echo "Starting to download Chromium source..."
+        fetch --no-history ios
+        echo "Source download completed!"
+        
+        # Show some basic info
+        cd $HOME/chromium/src
+        echo "Current directory: $(pwd)"
+        echo "Directory size: $(du -sh . 2>/dev/null || echo 'Cannot calculate size')"
+        echo "depot_tools path: $(which gn || echo 'gn not found')"
+
+    - name: Start tmate debug session
+      uses: mxschmitt/action-tmate@v3
+      with:
+        limit-access-to-actor: true
+        timeout-minutes: 300  # 5 hours timeout
