@@ -34,6 +34,13 @@ jobs:
       CHROMIUM_PATH: /Users/runner/chromium
 
     steps:
+    - name: Set sanitized module name
+      id: sanitize
+      run: |
+        SANITIZED_NAME=$(echo "${{ matrix.module }}" | tr ':/' '_')
+        echo "name=$SANITIZED_NAME" >> $GITHUB_OUTPUT
+        echo "Sanitized module name: $SANITIZED_NAME"
+    
     - name: Check for existing artifacts
       id: check_artifacts
       if: ${{ github.event.inputs.reuse_artifacts == 'true' }}
@@ -51,7 +58,7 @@ jobs:
           --jq ".workflow_runs[] | select(.status == \"completed\" and .conclusion == \"success\" and .created_at >= \"$SEVEN_DAYS_AGO\") | .id" \
           | head -10)
         
-        ARTIFACT_NAME="build-output-${{ replace(matrix.module, ':', '_') }}"
+        ARTIFACT_NAME="build-output-${{ steps.sanitize.outputs.name }}"
         FOUND_ARTIFACT=""
         LATEST_DATE=""
         
@@ -164,7 +171,7 @@ jobs:
     - name: Upload partial build output
       uses: actions/upload-artifact@v4
       with:
-        name: build-output-${{ replace(matrix.module, ':', '_') }}
+        name: build-output-${{ steps.sanitize.outputs.name }}
         path: ${{ env.CHROMIUM_PATH }}/src/out/
         retention-days: 1
 
@@ -191,7 +198,7 @@ jobs:
             fi
           done
       - name: Cache combined build output
-        uses: actions/cache@vv4
+        uses: actions/cache@v4
         with:
           path: /Users/runner/chromium/src/out/
           key: combined-build-output-${{ github.run_id }}
